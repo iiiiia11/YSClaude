@@ -1,0 +1,1313 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { sqliteStorage } from '../db/kv-storage';
+import { APIConfig, IncomingLetterOccasion, type PromptCacheTtl, type StablePromptRole } from '../types';
+import { DEFAULT_HOTBOARD_PLATFORM_TYPES } from '../utils/hotboardPlatforms';
+import type { TopBarIconKey } from '../utils/topBarIconTypes';
+
+export type ChatInputIconKey =
+  | 'options'
+  | 'sticker'
+  | 'sendIdle'
+  | 'sendFocused'
+  | 'stop';
+
+export type ChatInputAppearanceStyle = 'default' | 'compact';
+export type AssistantBubbleAppearanceStyle = 'plain' | 'bubble';
+export type MessageAvatarLayout = 'header' | 'side';
+
+export interface AppearanceThemeSnapshot {
+  topBarIconUris: Partial<Record<TopBarIconKey, string>>;
+  topBarIconsHidden?: boolean;
+  topBarFadeHidden?: boolean;
+  topBarBackgroundImageUri?: string;
+  customGreetings?: string;
+  welcomeLogoImageUri?: string;
+  chatBackgroundImageUri?: string;
+  userBubbleColor?: string;
+  userBubbleTransparent?: boolean;
+  userBubbleRadius?: number;
+  userBubbleWidthPercent?: number;
+  assistantBubbleStyle?: AssistantBubbleAppearanceStyle;
+  assistantBubbleColor?: string;
+  assistantBubbleTransparent?: boolean;
+  assistantBubbleRadius?: number;
+  assistantBubbleWidthPercent?: number;
+  messageAvatarsVisible?: boolean;
+  messageAvatarLayout?: MessageAvatarLayout;
+  messageMetaVisible?: boolean;
+  userAvatarImageUri?: string;
+  assistantAvatarImageUri?: string;
+  messageAvatarRadius?: number;
+  userDisplayName?: string;
+  assistantDisplayName?: string;
+  assistantFooterHidden?: boolean;
+  assistantActionsHidden?: boolean;
+  assistantFooterColor?: string;
+  userTextColor?: string;
+  assistantTextColor?: string;
+  assistantTextStrokeColor?: string;
+  assistantTextStrokeWidth?: number;
+  userFontSize?: number;
+  assistantFontSize?: number;
+  customCss?: string;
+  inputBackgroundImageUri?: string;
+  inputBackgroundTransparent?: boolean;
+  inputStyle?: ChatInputAppearanceStyle;
+  inputBorderRadius?: number;
+  inputIconUris?: Partial<Record<ChatInputIconKey, string>>;
+}
+
+interface AppearanceTheme {
+  id: string;
+  name: string;
+  updatedAt: number;
+  config: AppearanceThemeSnapshot;
+}
+
+export interface NamedAPIConfig extends APIConfig {
+  name: string;
+}
+
+export type { PromptCacheCompatibility, PromptCacheTtl, ThinkingCompatibility, ThinkingEffort, StablePromptRole } from '../types';
+
+// HiddenRange 已迁移到 src/types，这里 re-export 保持旧的 import 路径兼容。
+export type { HiddenRange } from '../types';
+
+export interface TTSConfig {
+  groupId: string;
+  apiKey: string;
+  model: string;
+  voiceId: string;
+  speed: number;
+  vol: number;
+  pitch: number;
+}
+
+export interface MemoryVaultConfig {
+  enabled: boolean;
+  baseUrl: string;
+  adminToken: string;
+  topK: number;
+  tokenBudget: number;
+  maxToolCalls: number;
+}
+
+export interface WebSearchConfig {
+  enabled: boolean;
+  tavilyApiKey: string;
+  maxResults: number;
+}
+
+export interface WebInteractionConfig {
+  enabled: boolean;
+  maxToolCalls: number;
+}
+
+export interface HtmlArtifactToolConfig {
+  enabled: boolean;
+  maxToolCalls: number;
+}
+
+export interface ConversationArtifactToolConfig {
+  enabled: boolean;
+  maxToolCalls: number;
+}
+
+export interface HotboardConfig {
+  enabled: boolean;
+  apiKey: string;
+  platforms: string;
+}
+
+export interface RunCommandProfileConfig {
+  sshHost: string;
+  sshPort: number;
+  sshUsername: string;
+  sshPassword: string;
+  sshPrivateKey: string;
+  sshPassphrase: string;
+  strictHostKeyChecking: boolean;
+  knownHosts: string;
+  defaultCwd: string;
+  customPrompt: string;
+  timeoutMs: number;
+  maxOutputChars: number;
+  maxToolCalls: number;
+}
+
+export interface RunCommandProfile {
+  id: string;
+  name: string;
+  updatedAt: number;
+  config: RunCommandProfileConfig;
+}
+
+export interface RunCommandConfig extends RunCommandProfileConfig {
+  enabled: boolean;
+  profiles?: RunCommandProfile[];
+  activeProfileId?: string;
+}
+
+export interface QQBotConfig {
+  enabled: boolean;
+  backendUrl: string;
+  controlToken: string;
+  appId: string;
+  appSecret: string;
+  sandbox: boolean;
+  autoConnect: boolean;
+  allowDirectMessages: boolean;
+  allowGuildMentions: boolean;
+  openAiBaseUrl: string;
+  openAiApiKey: string;
+  model: string;
+  systemPrompt: string;
+  qqSystemPrompt: string;
+  wechatSystemPrompt: string;
+  temperature: number;
+  maxOutputTokens: number;
+  historyLimit: number;
+  memoryVaultEnabled: boolean;
+  memoryVaultBaseUrl: string;
+  memoryVaultTopK: number;
+  memoryVaultTokenBudget: number;
+  memoryVaultMaxToolCalls: number;
+  webSearchEnabled: boolean;
+  tavilyApiKey: string;
+  webSearchMaxResults: number;
+  mcpEnabled: boolean;
+  mcpMaxToolCalls: number;
+  mcpServers: McpServerConfig[];
+  ttsEnabled: boolean;
+  ttsWithText: boolean;
+  ttsGroupId: string;
+  ttsApiKey: string;
+  ttsModel: string;
+  ttsVoiceId: string;
+  ttsSpeed: number;
+  ttsVol: number;
+  ttsPitch: number;
+  messageBatchEnabled: boolean;
+  messageBatchWindowMs: number;
+  stickersEnabled: boolean;
+  wechatEnabled: boolean;
+  wechatAutoConnect: boolean;
+  wechatAccountId: string;
+  wechatBaseUrl: string;
+}
+
+export interface NativeToolConfig {
+  deviceInfoEnabled: boolean;
+  batteryStatusEnabled: boolean;
+  appUsageStatsEnabled: boolean;
+  calendarEnabled: boolean;
+  accessibilityControlEnabled?: boolean;
+}
+
+export interface McpToolSnapshot {
+  name: string;
+  title?: string;
+  description?: string;
+  inputSchema?: Record<string, any>;
+  enabled?: boolean;
+}
+
+export interface McpResourceSnapshot {
+  uri: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  enabled?: boolean;
+  pinned?: boolean;
+}
+
+export interface McpResourceTemplateSnapshot {
+  uriTemplate: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  enabled?: boolean;
+}
+
+export interface McpPromptArgumentSnapshot {
+  name: string;
+  title?: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface McpPromptSnapshot {
+  name: string;
+  title?: string;
+  description?: string;
+  arguments?: McpPromptArgumentSnapshot[];
+  enabled?: boolean;
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  url: string;
+  authorization: string;
+  enabled: boolean;
+  tools: McpToolSnapshot[];
+  resources?: McpResourceSnapshot[];
+  resourceTemplates?: McpResourceTemplateSnapshot[];
+  prompts?: McpPromptSnapshot[];
+  updatedAt: number;
+}
+
+export interface McpToolConfig {
+  enabled: boolean;
+  servers: McpServerConfig[];
+  maxToolCalls: number;
+  resourceToolsEnabled?: boolean;
+}
+
+interface ToolSettingsUiConfig {
+  builtInToolsExpanded: boolean;
+  customMcpExpanded: boolean;
+}
+
+interface ReadingConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  summarySystemPrompt: string;
+  sourceCharLimit: number;
+  conversationMessageLimit: number;
+}
+
+export interface FloatingBallConfig {
+  enabled: boolean;
+  ttsEnabled: boolean;
+  autoReplyOnScreenshotShare?: boolean;
+  normalImageUri?: string;
+  edgeImageUri?: string;
+  normalImageUris?: string[];
+  edgeImageUris?: string[];
+  normalSizeDp?: number;
+  edgeSizeDp?: number;
+  assetAutoSwitchEnabled?: boolean;
+  assetAutoSwitchIntervalSeconds?: number;
+}
+
+interface PeriodConfig {
+  sendToAI: boolean;
+}
+
+export interface PromptCacheConfig {
+  enabled: boolean;
+  ttl: PromptCacheTtl;
+  keepaliveMode: 'local' | 'remote';
+  reminderEnabled: boolean;
+  remoteKeepaliveEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietStartMinutes: number;
+  quietEndMinutes: number;
+  remoteServerUrl: string;
+  remoteAuthToken: string;
+  remoteAgentTickEnabled: boolean;
+  pushChannel: 'wxpusher' | 'dingtalk';
+  wxPusherAppToken: string;
+  wxPusherUid: string;
+  wxPusherTopicIds: string;
+  dingTalkWebhook: string;
+  dingTalkSecret: string;
+  dingTalkAtMobiles: string;
+}
+
+export interface ImageGenerationFaceReference {
+  id: string;
+  uri: string;
+  enabled: boolean;
+  createdAt: number;
+}
+
+export interface ImageGenerationConfig {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  size: string;
+  quality: string;
+  faceReferences: ImageGenerationFaceReference[];
+}
+
+export interface IncomingLetterConfig {
+  enabled: boolean;
+  occasions: IncomingLetterOccasion[];
+}
+
+export interface DailyPaperSourceConfig {
+  id: string;
+  name: string;
+  url: string;
+  category: string;
+  language: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DailyPaperConfig {
+  useDefaultSources: boolean;
+  customSources: DailyPaperSourceConfig[];
+}
+
+export type StickerOwner = 'user' | 'assistant';
+
+export interface CustomSticker {
+  id: string;
+  name: string;
+  uri?: string;
+  assetKey?: string;
+  createdAt: number;
+}
+
+export interface StickerConfig {
+  initialized?: boolean;
+  stickerSuggestionsEnabled?: boolean;
+  userStickers: CustomSticker[];
+  assistantStickers: CustomSticker[];
+}
+
+export interface AppearanceConfig extends AppearanceThemeSnapshot {
+  useDefaultGreetings?: boolean;
+  defaultGreetingName?: string;
+  appearanceThemes?: AppearanceTheme[];
+  activeAppearanceThemeId?: string;
+}
+
+function createDefaultStickerConfig(): StickerConfig {
+  return {
+    initialized: true,
+    stickerSuggestionsEnabled: true,
+    userStickers: [],
+    assistantStickers: [],
+  };
+}
+
+function isLegacyDefaultSticker(sticker: CustomSticker): boolean {
+  return sticker.id.startsWith('default-') || !!sticker.assetKey;
+}
+
+function filterCustomStickers(stickers?: CustomSticker[]): CustomSticker[] {
+  return (stickers || []).filter((sticker) => !isLegacyDefaultSticker(sticker));
+}
+
+function normalizeStickerConfig(config?: StickerConfig): StickerConfig {
+  if (!config?.initialized) {
+    return {
+      initialized: true,
+      stickerSuggestionsEnabled: config?.stickerSuggestionsEnabled ?? true,
+      userStickers: filterCustomStickers(config?.userStickers),
+      assistantStickers: filterCustomStickers(config?.assistantStickers),
+    };
+  }
+
+  return {
+    initialized: true,
+    stickerSuggestionsEnabled: config.stickerSuggestionsEnabled ?? true,
+    userStickers: filterCustomStickers(config.userStickers),
+    assistantStickers: filterCustomStickers(config.assistantStickers),
+  };
+}
+
+function normalizeFloatingBallConfig(config?: FloatingBallConfig): FloatingBallConfig {
+  const normalImageUris =
+    (config?.normalImageUris && config.normalImageUris.length > 0)
+      ? Array.from(new Set(config.normalImageUris.filter(Boolean)))
+      : config?.normalImageUri
+        ? [config.normalImageUri]
+        : [];
+  const edgeImageUris =
+    (config?.edgeImageUris && config.edgeImageUris.length > 0)
+      ? Array.from(new Set(config.edgeImageUris.filter(Boolean)))
+      : config?.edgeImageUri
+        ? [config.edgeImageUri]
+        : [];
+
+  return {
+    enabled: config?.enabled ?? false,
+    ttsEnabled: config?.ttsEnabled ?? false,
+    autoReplyOnScreenshotShare: config?.autoReplyOnScreenshotShare ?? false,
+    normalImageUri: config?.normalImageUri || normalImageUris[0],
+    edgeImageUri: config?.edgeImageUri || edgeImageUris[0],
+    normalImageUris,
+    edgeImageUris,
+    normalSizeDp: Math.min(160, Math.max(32, config?.normalSizeDp ?? 64)),
+    edgeSizeDp: Math.min(160, Math.max(32, config?.edgeSizeDp ?? 64)),
+    assetAutoSwitchEnabled: config?.assetAutoSwitchEnabled ?? false,
+    assetAutoSwitchIntervalSeconds: Math.min(
+      3600,
+      Math.max(1, config?.assetAutoSwitchIntervalSeconds ?? 8)
+    ),
+  };
+}
+
+function normalizeImageGenerationConfig(config?: Partial<ImageGenerationConfig>): ImageGenerationConfig {
+  return {
+    enabled: config?.enabled ?? false,
+    baseUrl: config?.baseUrl || '',
+    apiKey: config?.apiKey || '',
+    model: config?.model || 'gpt-image-2',
+    size: config?.size || '1024x1024',
+    quality: config?.quality || 'auto',
+    faceReferences: (config?.faceReferences || [])
+      .filter((item) => !!item?.uri)
+      .map((item) => ({
+        id: item.id || createId('face-ref'),
+        uri: item.uri,
+        enabled: item.enabled !== false,
+        createdAt: item.createdAt || Date.now(),
+      })),
+  };
+}
+
+function normalizeIncomingLetterConfig(config?: Partial<IncomingLetterConfig>): IncomingLetterConfig {
+  return {
+    enabled: config?.enabled ?? false,
+    occasions: (config?.occasions || [])
+      .filter((item) => !!item?.id && !!item?.date)
+      .map((item) => ({
+        id: item.id,
+        title: item.title || '收信日',
+        date: item.date,
+        repeatYearly: item.repeatYearly !== false,
+        enabled: item.enabled !== false,
+        systemPrompt: item.systemPrompt || '',
+        createdAt: item.createdAt || Date.now(),
+        updatedAt: item.updatedAt || item.createdAt || Date.now(),
+      })),
+  };
+}
+
+function normalizePromptCacheConfig(config?: Partial<PromptCacheConfig>): PromptCacheConfig {
+  const clampMinutes = (value: unknown, fallback: number) => {
+    const numeric = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback;
+    return Math.min(1439, Math.max(0, numeric));
+  };
+  const rawPushChannel = String((config as any)?.pushChannel || '').toLowerCase();
+  const pushChannel: PromptCacheConfig['pushChannel'] =
+    rawPushChannel === 'wxpusher'
+      ? 'wxpusher'
+      : 'dingtalk';
+  return {
+    enabled: config?.enabled ?? false,
+    ttl: config?.ttl === '1h' ? '1h' : '5m',
+    keepaliveMode: 'remote',
+    reminderEnabled: false,
+    remoteKeepaliveEnabled: (config as any)?.remoteKeepaliveEnabled ?? (config?.keepaliveMode === 'remote'),
+    quietHoursEnabled: config?.quietHoursEnabled ?? false,
+    quietStartMinutes: clampMinutes(config?.quietStartMinutes, 23 * 60),
+    quietEndMinutes: clampMinutes(config?.quietEndMinutes, 7 * 60),
+    remoteServerUrl: config?.remoteServerUrl || '',
+    remoteAuthToken: config?.remoteAuthToken || '',
+    remoteAgentTickEnabled: config?.remoteAgentTickEnabled ?? true,
+    pushChannel,
+    wxPusherAppToken: config?.wxPusherAppToken || '',
+    wxPusherUid: config?.wxPusherUid || '',
+    wxPusherTopicIds: config?.wxPusherTopicIds || '',
+    dingTalkWebhook: config?.dingTalkWebhook || '',
+    dingTalkSecret: config?.dingTalkSecret || '',
+    dingTalkAtMobiles: config?.dingTalkAtMobiles || '',
+  };
+}
+
+function normalizeDailyPaperConfig(config?: Partial<DailyPaperConfig>): DailyPaperConfig {
+  return {
+    useDefaultSources: config?.useDefaultSources ?? true,
+    customSources: (config?.customSources || [])
+      .filter((source) => !!source?.url)
+      .map((source) => ({
+        id: source.id || createId('daily-source'),
+        name: source.name?.trim() || '自定义来源',
+        url: source.url.trim(),
+        category: source.category?.trim() || 'general',
+        language: source.language?.trim() || 'zh',
+        enabled: source.enabled !== false,
+        createdAt: source.createdAt || Date.now(),
+        updatedAt: source.updatedAt || source.createdAt || Date.now(),
+      })),
+  };
+}
+
+const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
+  topBarIconUris: {},
+  topBarIconsHidden: false,
+  customGreetings: '',
+  welcomeLogoImageUri: undefined,
+  useDefaultGreetings: false,
+  defaultGreetingName: '',
+  messageAvatarsVisible: false,
+  messageAvatarLayout: 'header',
+  messageMetaVisible: true,
+  messageAvatarRadius: 18,
+  userDisplayName: 'You',
+  assistantDisplayName: 'Claude',
+  assistantBubbleStyle: 'plain',
+  userBubbleWidthPercent: 75,
+  assistantBubbleWidthPercent: 75,
+  assistantActionsHidden: false,
+  inputIconUris: {},
+  inputStyle: 'default',
+  inputBorderRadius: 24,
+  customCss: '',
+  appearanceThemes: [],
+};
+
+function createDefaultAppearanceConfig(): AppearanceConfig {
+  return {
+    ...DEFAULT_APPEARANCE_CONFIG,
+    topBarIconUris: {},
+    inputIconUris: {},
+    appearanceThemes: [],
+    activeAppearanceThemeId: undefined,
+  };
+}
+
+function createId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function snapshotAppearanceConfig(config?: AppearanceConfig): AppearanceThemeSnapshot {
+  const source = config || DEFAULT_APPEARANCE_CONFIG;
+  return {
+    topBarIconUris: { ...(source.topBarIconUris || {}) },
+    topBarIconsHidden: source.topBarIconsHidden,
+    topBarFadeHidden: source.topBarFadeHidden,
+    topBarBackgroundImageUri: source.topBarBackgroundImageUri,
+    chatBackgroundImageUri: source.chatBackgroundImageUri,
+    userBubbleColor: source.userBubbleColor,
+    userBubbleTransparent: source.userBubbleTransparent,
+    userBubbleRadius: source.userBubbleRadius,
+    userBubbleWidthPercent: source.userBubbleWidthPercent,
+    assistantBubbleStyle: source.assistantBubbleStyle,
+    assistantBubbleColor: source.assistantBubbleColor,
+    assistantBubbleTransparent: source.assistantBubbleTransparent,
+    assistantBubbleRadius: source.assistantBubbleRadius,
+    assistantBubbleWidthPercent: source.assistantBubbleWidthPercent,
+    messageAvatarsVisible: source.messageAvatarsVisible,
+    messageAvatarLayout: source.messageAvatarLayout === 'side' ? 'side' : 'header',
+    messageMetaVisible: source.messageMetaVisible,
+    userAvatarImageUri: source.userAvatarImageUri,
+    assistantAvatarImageUri: source.assistantAvatarImageUri,
+    messageAvatarRadius: source.messageAvatarRadius,
+    userDisplayName: source.userDisplayName,
+    assistantDisplayName: source.assistantDisplayName,
+    assistantFooterHidden: source.assistantFooterHidden,
+    assistantActionsHidden: source.assistantActionsHidden,
+    assistantFooterColor: source.assistantFooterColor,
+    userTextColor: source.userTextColor,
+    assistantTextColor: source.assistantTextColor,
+    assistantTextStrokeColor: source.assistantTextStrokeColor,
+    assistantTextStrokeWidth: source.assistantTextStrokeWidth,
+    userFontSize: source.userFontSize,
+    assistantFontSize: source.assistantFontSize,
+    customCss: source.customCss,
+    inputBackgroundImageUri: source.inputBackgroundImageUri,
+    inputBackgroundTransparent: source.inputBackgroundTransparent,
+    inputStyle: source.inputStyle === 'compact' ? 'compact' : 'default',
+    inputBorderRadius: source.inputBorderRadius,
+    inputIconUris: { ...(source.inputIconUris || {}) },
+  };
+}
+
+interface SettingsState {
+  _hydrated: boolean;
+  apiConfigs: NamedAPIConfig[];
+  activeConfigIndex: number;
+  systemPrompt: string;
+  stablePromptRole: StablePromptRole;
+  systemPrompts: { name: string; content: string }[];
+  maxOutputTokens: number | null;
+  tokenWarningThreshold: number | null;
+  stripThinking: boolean;
+  ttsConfig: TTSConfig;
+  memoryVaultConfig: MemoryVaultConfig;
+  webSearchConfig: WebSearchConfig;
+  webInteractionConfig: WebInteractionConfig;
+  conversationArtifactToolConfig: ConversationArtifactToolConfig;
+  htmlArtifactToolConfig: HtmlArtifactToolConfig;
+  hotboardConfig: HotboardConfig;
+  runCommandConfig: RunCommandConfig;
+  qqBotConfig: QQBotConfig;
+  nativeToolConfig: NativeToolConfig;
+  mcpToolConfig: McpToolConfig;
+  toolSettingsUiConfig: ToolSettingsUiConfig;
+  readingConfig: ReadingConfig;
+  floatingBallConfig: FloatingBallConfig;
+  periodConfig: PeriodConfig;
+  promptCacheConfig: PromptCacheConfig;
+  imageGenerationConfig: ImageGenerationConfig;
+  imageGenerationPrompt: string;
+  incomingLetterConfig: IncomingLetterConfig;
+  dailyPaperConfig: DailyPaperConfig;
+  stickerConfig: StickerConfig;
+  appearanceConfig: AppearanceConfig;
+
+  setActiveConfig: (index: number) => void;
+  saveAPIConfig: (config: NamedAPIConfig) => void;
+  removeAPIConfig: (index: number) => void;
+  setSystemPrompt: (prompt: string) => void;
+  setStablePromptRole: (role: StablePromptRole) => void;
+  setSystemPrompts: (prompts: { name: string; content: string }[]) => void;
+  setMaxOutputTokens: (tokens: number | null) => void;
+  setTokenWarningThreshold: (tokens: number | null) => void;
+  setStripThinking: (value: boolean) => void;
+  setTTSConfig: (config: Partial<TTSConfig>) => void;
+  setMemoryVaultConfig: (config: Partial<MemoryVaultConfig>) => void;
+  setWebSearchConfig: (config: Partial<WebSearchConfig>) => void;
+  setWebInteractionConfig: (config: Partial<WebInteractionConfig>) => void;
+  setConversationArtifactToolConfig: (config: Partial<ConversationArtifactToolConfig>) => void;
+  setHtmlArtifactToolConfig: (config: Partial<HtmlArtifactToolConfig>) => void;
+  setHotboardConfig: (config: Partial<HotboardConfig>) => void;
+  setRunCommandConfig: (config: Partial<RunCommandConfig>) => void;
+  setQqBotConfig: (config: Partial<QQBotConfig>) => void;
+  setNativeToolConfig: (config: Partial<NativeToolConfig>) => void;
+  setMcpToolConfig: (config: Partial<McpToolConfig>) => void;
+  setToolSettingsUiConfig: (config: Partial<ToolSettingsUiConfig>) => void;
+  setReadingConfig: (config: Partial<ReadingConfig>) => void;
+  setFloatingBallConfig: (config: Partial<FloatingBallConfig>) => void;
+  setPeriodConfig: (config: Partial<PeriodConfig>) => void;
+  setPromptCacheConfig: (config: Partial<PromptCacheConfig>) => void;
+  setImageGenerationConfig: (config: Partial<ImageGenerationConfig>) => void;
+  setImageGenerationPrompt: (prompt: string) => void;
+  setIncomingLetterConfig: (config: Partial<IncomingLetterConfig>) => void;
+  setDailyPaperConfig: (config: Partial<DailyPaperConfig>) => void;
+  addIncomingLetterOccasion: (occasion: IncomingLetterOccasion) => void;
+  updateIncomingLetterOccasion: (id: string, patch: Partial<IncomingLetterOccasion>) => void;
+  removeIncomingLetterOccasion: (id: string) => void;
+  setStickerSuggestionsEnabled: (enabled: boolean) => void;
+  addSticker: (owner: StickerOwner, sticker: CustomSticker) => void;
+  updateSticker: (owner: StickerOwner, id: string, patch: Partial<Pick<CustomSticker, 'name' | 'uri'>>) => void;
+  removeSticker: (owner: StickerOwner, id: string) => void;
+  setAppearanceConfig: (config: Partial<AppearanceConfig>) => void;
+  setTopBarIconUri: (key: TopBarIconKey, uri: string) => void;
+  clearTopBarIconUri: (key: TopBarIconKey) => void;
+  resetTopBarIcons: () => void;
+  setChatInputIconUri: (key: ChatInputIconKey, uri: string) => void;
+  clearChatInputIconUri: (key: ChatInputIconKey) => void;
+  resetChatInputIcons: () => void;
+  saveAppearanceTheme: (name: string) => string;
+  updateAppearanceTheme: (id: string) => void;
+  applyAppearanceTheme: (id: string) => void;
+  removeAppearanceTheme: (id: string) => void;
+  resetAppearanceConfig: () => void;
+}
+
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set, get) => ({
+      _hydrated: false,
+      apiConfigs: [],
+      activeConfigIndex: 0,
+      systemPrompt: 'You are a helpful assistant.',
+      stablePromptRole: 'system',
+      systemPrompts: [
+        { name: '默认', content: 'You are a helpful assistant.' },
+      ],
+      maxOutputTokens: null,
+      tokenWarningThreshold: null,
+      stripThinking: false,
+      ttsConfig: {
+        groupId: '',
+        apiKey: '',
+        model: 'speech-02-hd',
+        voiceId: '',
+        speed: 1,
+        vol: 1,
+        pitch: 0,
+      },
+      memoryVaultConfig: {
+        enabled: false,
+        baseUrl: '',
+        adminToken: '',
+        topK: 5,
+        tokenBudget: 2000,
+        maxToolCalls: 3,
+      },
+      webSearchConfig: {
+        enabled: false,
+        tavilyApiKey: '',
+        maxResults: 5,
+      },
+      webInteractionConfig: {
+        enabled: false,
+        maxToolCalls: 8,
+      },
+      conversationArtifactToolConfig: {
+        enabled: false,
+        maxToolCalls: 8,
+      },
+      htmlArtifactToolConfig: {
+        enabled: false,
+        maxToolCalls: 8,
+      },
+      hotboardConfig: {
+        enabled: false,
+        apiKey: '',
+        platforms: DEFAULT_HOTBOARD_PLATFORM_TYPES.join(','),
+      },
+      runCommandConfig: {
+        enabled: false,
+        sshHost: '',
+        sshPort: 22,
+        sshUsername: '',
+        sshPassword: '',
+        sshPrivateKey: '',
+        sshPassphrase: '',
+        strictHostKeyChecking: false,
+        knownHosts: '',
+        defaultCwd: '',
+        customPrompt: '',
+        timeoutMs: 60000,
+        maxOutputChars: 20000,
+        maxToolCalls: 20,
+      },
+      qqBotConfig: {
+        enabled: false,
+        backendUrl: 'http://127.0.0.1:8788',
+        controlToken: '',
+        appId: '',
+        appSecret: '',
+        sandbox: true,
+        autoConnect: true,
+        allowDirectMessages: true,
+        allowGuildMentions: true,
+        openAiBaseUrl: '',
+        openAiApiKey: '',
+        model: '',
+        systemPrompt: '你是 YSClaude 的 QQ 机器人入口。请用自然、简洁、友好的中文回复 QQ 用户。',
+        qqSystemPrompt: '你是 YSClaude 的 QQ 机器人入口。请用自然、简洁、友好的中文回复 QQ 用户。',
+        wechatSystemPrompt: '你是 YSClaude 的微信机器人入口。请用自然、简洁、友好的中文回复微信用户。',
+        temperature: 0.7,
+        maxOutputTokens: 1200,
+        historyLimit: 16,
+        memoryVaultEnabled: false,
+        memoryVaultBaseUrl: '',
+        memoryVaultTopK: 5,
+        memoryVaultTokenBudget: 2000,
+        memoryVaultMaxToolCalls: 3,
+        webSearchEnabled: false,
+        tavilyApiKey: '',
+        webSearchMaxResults: 5,
+        mcpEnabled: false,
+        mcpMaxToolCalls: 6,
+        mcpServers: [],
+        ttsEnabled: false,
+        ttsWithText: false,
+        ttsGroupId: '',
+        ttsApiKey: '',
+        ttsModel: 'speech-02-hd',
+        ttsVoiceId: '',
+        ttsSpeed: 1,
+        ttsVol: 1,
+        ttsPitch: 0,
+        messageBatchEnabled: true,
+        messageBatchWindowMs: 6000,
+        stickersEnabled: false,
+        wechatEnabled: false,
+        wechatAutoConnect: true,
+        wechatAccountId: '',
+        wechatBaseUrl: '',
+      },
+      nativeToolConfig: {
+        deviceInfoEnabled: false,
+        batteryStatusEnabled: false,
+        appUsageStatsEnabled: false,
+        calendarEnabled: false,
+        accessibilityControlEnabled: false,
+      },
+      mcpToolConfig: {
+        enabled: false,
+        servers: [],
+        maxToolCalls: 6,
+      },
+      toolSettingsUiConfig: {
+        builtInToolsExpanded: true,
+        customMcpExpanded: true,
+      },
+      readingConfig: {
+        baseUrl: '',
+        apiKey: '',
+        model: '',
+        systemPrompt:
+          '你是一个温柔、细致的 AI 共读伙伴。围绕用户正在阅读的原文回答，帮助解释、联想、提问和梳理，但不要剧透当前原文之后的内容。',
+        summarySystemPrompt:
+          '你是一个细致的 AI 共读记录整理者。只根据用户提供的聊天记录做总结，不补充书籍原文、阅读位置或外部信息。',
+        sourceCharLimit: 4000,
+        conversationMessageLimit: 8,
+      },
+      floatingBallConfig: {
+        enabled: false,
+        ttsEnabled: false,
+        autoReplyOnScreenshotShare: false,
+        normalImageUri: undefined,
+        edgeImageUri: undefined,
+        normalImageUris: [],
+        edgeImageUris: [],
+        normalSizeDp: 64,
+        edgeSizeDp: 64,
+        assetAutoSwitchEnabled: false,
+        assetAutoSwitchIntervalSeconds: 8,
+      },
+      periodConfig: {
+        sendToAI: false,
+      },
+      promptCacheConfig: {
+        enabled: false,
+        ttl: '5m',
+        keepaliveMode: 'remote',
+        reminderEnabled: false,
+        remoteKeepaliveEnabled: false,
+        quietHoursEnabled: false,
+        quietStartMinutes: 23 * 60,
+        quietEndMinutes: 7 * 60,
+        remoteServerUrl: '',
+        remoteAuthToken: '',
+        remoteAgentTickEnabled: true,
+        pushChannel: 'dingtalk',
+        wxPusherAppToken: '',
+        wxPusherUid: '',
+        wxPusherTopicIds: '',
+        dingTalkWebhook: '',
+        dingTalkSecret: '',
+        dingTalkAtMobiles: '',
+      },
+      imageGenerationConfig: {
+        enabled: false,
+        baseUrl: '',
+        apiKey: '',
+        model: 'gpt-image-2',
+        size: '1024x1024',
+        quality: 'auto',
+        faceReferences: [],
+      },
+      imageGenerationPrompt: '高质量图片，画面清晰，主体明确，无水印，无乱码文字。',
+      incomingLetterConfig: {
+        enabled: false,
+        occasions: [],
+      },
+      dailyPaperConfig: {
+        useDefaultSources: true,
+        customSources: [],
+      },
+      stickerConfig: createDefaultStickerConfig(),
+      appearanceConfig: DEFAULT_APPEARANCE_CONFIG,
+
+      setActiveConfig: (index) => set({ activeConfigIndex: index }),
+
+      saveAPIConfig: (config) =>
+        set((state) => {
+          const existingIndex = state.apiConfigs.findIndex((c) => c.name === config.name);
+          if (existingIndex >= 0) {
+            const configs = [...state.apiConfigs];
+            configs[existingIndex] = config;
+            return { apiConfigs: configs };
+          }
+          return { apiConfigs: [...state.apiConfigs, config] };
+        }),
+
+      removeAPIConfig: (index) =>
+        set((state) => ({
+          apiConfigs: state.apiConfigs.filter((_, i) => i !== index),
+          activeConfigIndex:
+            state.activeConfigIndex >= state.apiConfigs.length - 1
+              ? Math.max(0, state.apiConfigs.length - 2)
+              : state.activeConfigIndex,
+        })),
+
+      setSystemPrompt: (prompt) => set({ systemPrompt: prompt }),
+      setStablePromptRole: (role) => set({ stablePromptRole: role }),
+      setSystemPrompts: (prompts) => set({ systemPrompts: prompts }),
+
+      setMaxOutputTokens: (tokens) => set({ maxOutputTokens: tokens }),
+      setTokenWarningThreshold: (tokens) => set({ tokenWarningThreshold: tokens }),
+      setStripThinking: (value) => set({ stripThinking: value }),
+      setTTSConfig: (config) =>
+        set((state) => ({ ttsConfig: { ...state.ttsConfig, ...config } })),
+      setMemoryVaultConfig: (config) =>
+        set((state) => ({ memoryVaultConfig: { ...state.memoryVaultConfig, ...config } })),
+      setWebSearchConfig: (config) =>
+        set((state) => ({ webSearchConfig: { ...state.webSearchConfig, ...config } })),
+      setWebInteractionConfig: (config) =>
+        set((state) => ({ webInteractionConfig: { ...state.webInteractionConfig, ...config } })),
+      setConversationArtifactToolConfig: (config) =>
+        set((state) => ({ conversationArtifactToolConfig: { ...state.conversationArtifactToolConfig, ...config } })),
+      setHtmlArtifactToolConfig: (config) =>
+        set((state) => ({ htmlArtifactToolConfig: { ...state.htmlArtifactToolConfig, ...config } })),
+      setHotboardConfig: (config) =>
+        set((state) => ({ hotboardConfig: { ...state.hotboardConfig, ...config } })),
+      setRunCommandConfig: (config) =>
+        set((state) => ({
+          runCommandConfig: {
+            ...(state.runCommandConfig || {
+              enabled: false,
+              sshHost: '',
+              sshPort: 22,
+              sshUsername: '',
+              sshPassword: '',
+              sshPrivateKey: '',
+              sshPassphrase: '',
+              strictHostKeyChecking: false,
+              knownHosts: '',
+              defaultCwd: '',
+              customPrompt: '',
+              timeoutMs: 60000,
+              maxOutputChars: 20000,
+              maxToolCalls: 20,
+            }),
+            ...config,
+          },
+        })),
+      setQqBotConfig: (config) =>
+        set((state) => ({ qqBotConfig: { ...state.qqBotConfig, ...config } })),
+      setNativeToolConfig: (config) =>
+        set((state) => ({ nativeToolConfig: { ...state.nativeToolConfig, ...config } })),
+      setMcpToolConfig: (config) =>
+        set((state) => ({
+          mcpToolConfig: {
+            ...(state.mcpToolConfig || { enabled: false, servers: [], maxToolCalls: 6 }),
+            ...config,
+          },
+        })),
+      setToolSettingsUiConfig: (config) =>
+        set((state) => ({
+          toolSettingsUiConfig: {
+            ...(state.toolSettingsUiConfig || { builtInToolsExpanded: true, customMcpExpanded: true }),
+            ...config,
+          },
+        })),
+      setReadingConfig: (config) =>
+        set((state) => ({ readingConfig: { ...state.readingConfig, ...config } })),
+      setFloatingBallConfig: (config) =>
+        set((state) => ({ floatingBallConfig: { ...state.floatingBallConfig, ...config } })),
+      setPeriodConfig: (config) =>
+        set((state) => ({ periodConfig: { ...state.periodConfig, ...config } })),
+      setPromptCacheConfig: (config) =>
+        set((state) => ({
+          promptCacheConfig: normalizePromptCacheConfig({
+            ...state.promptCacheConfig,
+            ...config,
+          }),
+        })),
+      setImageGenerationConfig: (config) =>
+        set((state) => ({
+          imageGenerationConfig: normalizeImageGenerationConfig({
+            ...state.imageGenerationConfig,
+            ...config,
+          }),
+        })),
+      setImageGenerationPrompt: (prompt) => set({ imageGenerationPrompt: prompt }),
+      setIncomingLetterConfig: (config) =>
+        set((state) => ({
+          incomingLetterConfig: normalizeIncomingLetterConfig({
+            ...state.incomingLetterConfig,
+            ...config,
+          }),
+        })),
+      setDailyPaperConfig: (config) =>
+        set((state) => ({
+          dailyPaperConfig: normalizeDailyPaperConfig({
+            ...state.dailyPaperConfig,
+            ...config,
+          }),
+        })),
+      addIncomingLetterOccasion: (occasion) =>
+        set((state) => {
+          const current = normalizeIncomingLetterConfig(state.incomingLetterConfig);
+          return {
+            incomingLetterConfig: {
+              ...current,
+              occasions: [occasion, ...current.occasions],
+            },
+          };
+        }),
+      updateIncomingLetterOccasion: (id, patch) =>
+        set((state) => {
+          const current = normalizeIncomingLetterConfig(state.incomingLetterConfig);
+          return {
+            incomingLetterConfig: {
+              ...current,
+              occasions: current.occasions.map((occasion) =>
+                occasion.id === id
+                  ? { ...occasion, ...patch, updatedAt: patch.updatedAt || Date.now() }
+                  : occasion
+              ),
+            },
+          };
+        }),
+      removeIncomingLetterOccasion: (id) =>
+        set((state) => {
+          const current = normalizeIncomingLetterConfig(state.incomingLetterConfig);
+          return {
+            incomingLetterConfig: {
+              ...current,
+              occasions: current.occasions.filter((occasion) => occasion.id !== id),
+            },
+          };
+        }),
+      setStickerSuggestionsEnabled: (enabled) =>
+        set((state) => {
+          const current = normalizeStickerConfig(state.stickerConfig);
+          return {
+            stickerConfig: {
+              ...current,
+              stickerSuggestionsEnabled: enabled,
+            },
+          };
+        }),
+      addSticker: (owner, sticker) =>
+        set((state) => {
+          const current = normalizeStickerConfig(state.stickerConfig);
+          const key = owner === 'user' ? 'userStickers' : 'assistantStickers';
+          return {
+            stickerConfig: {
+              ...current,
+              [key]: [sticker, ...(current[key] || [])],
+            },
+          };
+        }),
+      updateSticker: (owner, id, patch) =>
+        set((state) => {
+          const current = normalizeStickerConfig(state.stickerConfig);
+          const key = owner === 'user' ? 'userStickers' : 'assistantStickers';
+          return {
+            stickerConfig: {
+              ...current,
+              [key]: (current[key] || []).map((sticker) =>
+                sticker.id === id ? { ...sticker, ...patch } : sticker
+              ),
+            },
+          };
+        }),
+      removeSticker: (owner, id) =>
+        set((state) => {
+          const current = normalizeStickerConfig(state.stickerConfig);
+          const key = owner === 'user' ? 'userStickers' : 'assistantStickers';
+          return {
+            stickerConfig: {
+              ...current,
+              [key]: (current[key] || []).filter((sticker) => sticker.id !== id),
+            },
+          };
+        }),
+      setAppearanceConfig: (config) =>
+        set((state) => ({
+          appearanceConfig: {
+            ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+            ...config,
+            topBarIconUris: {
+              ...(state.appearanceConfig?.topBarIconUris || {}),
+              ...(config.topBarIconUris || {}),
+            },
+            inputIconUris: {
+              ...(state.appearanceConfig?.inputIconUris || {}),
+              ...(config.inputIconUris || {}),
+            },
+          },
+        })),
+      setTopBarIconUri: (key, uri) =>
+        set((state) => ({
+          appearanceConfig: {
+            ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+            topBarIconUris: {
+              ...(state.appearanceConfig?.topBarIconUris || {}),
+              [key]: uri,
+            },
+          },
+        })),
+      clearTopBarIconUri: (key) =>
+        set((state) => {
+          const nextUris = { ...(state.appearanceConfig?.topBarIconUris || {}) };
+          delete nextUris[key];
+          return {
+            appearanceConfig: {
+              ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+              topBarIconUris: nextUris,
+            },
+          };
+        }),
+      resetTopBarIcons: () =>
+        set((state) => ({
+          appearanceConfig: {
+            ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+            topBarIconUris: {},
+          },
+        })),
+      setChatInputIconUri: (key, uri) =>
+        set((state) => ({
+          appearanceConfig: {
+            ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+            inputIconUris: {
+              ...(state.appearanceConfig?.inputIconUris || {}),
+              [key]: uri,
+            },
+          },
+        })),
+      clearChatInputIconUri: (key) =>
+        set((state) => {
+          const nextUris = { ...(state.appearanceConfig?.inputIconUris || {}) };
+          delete nextUris[key];
+          return {
+            appearanceConfig: {
+              ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+              inputIconUris: nextUris,
+            },
+          };
+        }),
+      resetChatInputIcons: () =>
+        set((state) => ({
+          appearanceConfig: {
+            ...(state.appearanceConfig || { topBarIconUris: {}, inputIconUris: {}, inputStyle: 'default' }),
+            inputIconUris: {},
+          },
+        })),
+      saveAppearanceTheme: (name) => {
+        const id = createId('appearance-theme');
+        set((state) => {
+          const current = state.appearanceConfig || DEFAULT_APPEARANCE_CONFIG;
+          const themes = current.appearanceThemes || [];
+          const theme: AppearanceTheme = {
+            id,
+            name: name.trim(),
+            updatedAt: Date.now(),
+            config: snapshotAppearanceConfig(current),
+          };
+          return {
+            appearanceConfig: {
+              ...current,
+              appearanceThemes: [theme, ...themes],
+              activeAppearanceThemeId: id,
+            },
+          };
+        });
+        return id;
+      },
+      updateAppearanceTheme: (id) =>
+        set((state) => {
+          const current = state.appearanceConfig || DEFAULT_APPEARANCE_CONFIG;
+          const themes = current.appearanceThemes || [];
+          return {
+            appearanceConfig: {
+              ...current,
+              appearanceThemes: themes.map((theme) =>
+                theme.id === id
+                  ? { ...theme, updatedAt: Date.now(), config: snapshotAppearanceConfig(current) }
+                  : theme
+              ),
+              activeAppearanceThemeId: id,
+            },
+          };
+        }),
+      applyAppearanceTheme: (id) =>
+        set((state) => {
+          const current = state.appearanceConfig || DEFAULT_APPEARANCE_CONFIG;
+          const themes = current.appearanceThemes || [];
+          const theme = themes.find((item) => item.id === id);
+          if (!theme) return { appearanceConfig: current };
+          return {
+            appearanceConfig: {
+              ...DEFAULT_APPEARANCE_CONFIG,
+              ...theme.config,
+              customGreetings: current.customGreetings,
+              welcomeLogoImageUri: current.welcomeLogoImageUri,
+              useDefaultGreetings: current.useDefaultGreetings,
+              defaultGreetingName: current.defaultGreetingName,
+              topBarIconUris: { ...(theme.config.topBarIconUris || {}) },
+              inputIconUris: { ...(theme.config.inputIconUris || {}) },
+              appearanceThemes: themes,
+              activeAppearanceThemeId: id,
+            },
+          };
+        }),
+      removeAppearanceTheme: (id) =>
+        set((state) => {
+          const current = state.appearanceConfig || DEFAULT_APPEARANCE_CONFIG;
+          const nextThemes = (current.appearanceThemes || []).filter((theme) => theme.id !== id);
+          return {
+            appearanceConfig: {
+              ...current,
+              appearanceThemes: nextThemes,
+              activeAppearanceThemeId:
+                current.activeAppearanceThemeId === id ? undefined : current.activeAppearanceThemeId,
+            },
+          };
+        }),
+      resetAppearanceConfig: () =>
+        set((state) => {
+          const current = state.appearanceConfig || DEFAULT_APPEARANCE_CONFIG;
+          return {
+            appearanceConfig: {
+              ...createDefaultAppearanceConfig(),
+              customGreetings: current.customGreetings || '',
+              welcomeLogoImageUri: current.welcomeLogoImageUri,
+              useDefaultGreetings: current.useDefaultGreetings ?? false,
+              defaultGreetingName: current.defaultGreetingName || '',
+              appearanceThemes: current.appearanceThemes || [],
+              activeAppearanceThemeId: undefined,
+            },
+          };
+        }),
+    }),
+    {
+      name: 'ysclaude-settings',
+      storage: createJSONStorage(() => sqliteStorage),
+      partialize: (state) => ({
+        apiConfigs: state.apiConfigs,
+        activeConfigIndex: state.activeConfigIndex,
+        systemPrompt: state.systemPrompt,
+        stablePromptRole: state.stablePromptRole,
+        systemPrompts: state.systemPrompts,
+        maxOutputTokens: state.maxOutputTokens,
+        tokenWarningThreshold: state.tokenWarningThreshold,
+        stripThinking: state.stripThinking,
+        ttsConfig: state.ttsConfig,
+        memoryVaultConfig: state.memoryVaultConfig,
+        webSearchConfig: state.webSearchConfig,
+        webInteractionConfig: state.webInteractionConfig,
+        conversationArtifactToolConfig: state.conversationArtifactToolConfig,
+        htmlArtifactToolConfig: state.htmlArtifactToolConfig,
+        hotboardConfig: state.hotboardConfig,
+        runCommandConfig: state.runCommandConfig,
+        qqBotConfig: state.qqBotConfig,
+        nativeToolConfig: state.nativeToolConfig,
+        mcpToolConfig: state.mcpToolConfig,
+        toolSettingsUiConfig: state.toolSettingsUiConfig,
+        readingConfig: state.readingConfig,
+        floatingBallConfig: state.floatingBallConfig,
+        periodConfig: state.periodConfig,
+        promptCacheConfig: state.promptCacheConfig,
+        imageGenerationConfig: state.imageGenerationConfig,
+        imageGenerationPrompt: state.imageGenerationPrompt,
+        incomingLetterConfig: state.incomingLetterConfig,
+        dailyPaperConfig: state.dailyPaperConfig,
+        stickerConfig: state.stickerConfig,
+        appearanceConfig: state.appearanceConfig,
+      }),
+      onRehydrateStorage: () => (state) => {
+        useSettingsStore.setState({
+          _hydrated: true,
+          conversationArtifactToolConfig:
+            state?.conversationArtifactToolConfig ||
+            state?.htmlArtifactToolConfig || {
+              enabled: false,
+              maxToolCalls: 8,
+            },
+          stickerConfig: normalizeStickerConfig(state?.stickerConfig),
+          floatingBallConfig: normalizeFloatingBallConfig(state?.floatingBallConfig),
+          promptCacheConfig: normalizePromptCacheConfig(state?.promptCacheConfig),
+          imageGenerationConfig: normalizeImageGenerationConfig(state?.imageGenerationConfig),
+          incomingLetterConfig: normalizeIncomingLetterConfig(state?.incomingLetterConfig),
+          dailyPaperConfig: normalizeDailyPaperConfig(state?.dailyPaperConfig),
+        });
+      },
+    }
+  )
+);
