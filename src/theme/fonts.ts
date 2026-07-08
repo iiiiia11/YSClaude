@@ -6,10 +6,10 @@ export const fonts: Record<
   'regular' | 'bold' | 'mono' | 'serif' | 'serifBold' | 'serifStrong',
   FontFamily
 > = {
-  regular: undefined,
-  bold: undefined,
-  mono: undefined,
-  serif: undefined,
-  serifBold: undefined,
-  serifStrong: undefined,
+  regular: 'Sohne-Buch',
+  bold: 'Sohne-Halbfett',
+  mono: 'SohneMono-Buch',
+  serif: 'TiemposText',
+  serifBold: 'TiemposText-bold',
+  serifStrong: 'TiemposText-bold2',
 };
